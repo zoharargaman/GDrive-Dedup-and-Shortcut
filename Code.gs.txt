@@ -79,7 +79,7 @@ function createShortcutsForSameNameFiles(baseFile) {
         fileMD=getFileMD5Hash(file.getId());
         if(fileMD==baseFileMD){
           var folder = getFileParentFolders(file.getId());
-          if(checkParentFoldersIsNot(file.getId(),'Comarcom Technical and Marketing Material')==false && file.getOwner().getEmail()==Session.getActiveUser()){
+          if(file.getOwner().getEmail()==Session.getActiveUser()){
             var shortcut = DriveApp.createShortcut(baseFile.getId());
             shortcut.moveTo(folder);
             file.setTrashed(true);
@@ -184,7 +184,7 @@ function trashAndShortcut(fTrashId,fLinkId){
   fTrash=DriveApp.getFileById(fTrashId);
   fLink=DriveApp.getFileById(fLinkId);
     if(fTrash.isTrashed()==false && fLink.isTrashed()==false){
-    if(checkParentFoldersIsNot(fTrashId,'Comarcom Technical and Marketing Material')==false && fTrash.getOwner().getEmail()==Session.getActiveUser()){
+    if(fTrash.getOwner().getEmail()==Session.getActiveUser()){
       try{
       var folder = getFileParentFolders(fTrashId);
       var shortcut = DriveApp.createShortcut(fLinkId);
