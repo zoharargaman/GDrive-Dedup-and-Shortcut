@@ -1,0 +1,293 @@
+var fileList=[];
+
+function getFileParentFolders(fileId) {
+  var file = DriveApp.getFileById(fileId);
+  var folder;
+  var folderIter = file.getParents()
+
+  while (folderIter.hasNext()) {
+    folder=folderIter.next();
+  }
+  
+  return folder;
+}
+
+function checkParentFoldersIsNot(fileId,str) {
+  var file = DriveApp.getFileById(fileId);
+  var folder;
+  var folderIter = file.getParents()
+var bool=false;
+  while (folderIter.hasNext()) {
+    folder=folderIter.next();
+    if(folder.getName()==str){
+      bool=true;
+    }
+  }
+  return bool;
+}
+
+function getFileMD5Hash(fileId) {
+  var accessToken = ScriptApp.getOAuthToken();
+  var url = "https://www.googleapis.com/drive/v3/files/" + fileId + "?fields=md5Checksum";
+
+  var options = {
+    method: "GET",
+    headers: {
+      Authorization: "Bearer " + accessToken
+    }
+  };
+
+  var response = UrlFetchApp.fetch(url, options);
+  var metadata = JSON.parse(response.getContentText());
+
+  var md5Checksum = metadata.md5Checksum;
+
+  return md5Checksum;
+}
+
+function logFileMD5Hash(fileId) {
+  var md5Hash = getFileMD5Hash(fileId);
+  // Logger.log('MD5 Hash: ' + md5Hash);
+}
+
+
+
+function getSubFolders(parent) {
+  addFileToList(parent);
+  // parent = parent.getId();
+  
+   var childFolder = parent.getFolders();
+  while(childFolder.hasNext()) {
+    var child = childFolder.next();
+    // Logger.log(child.getName());
+    getSubFolders(child);
+  }
+  return;
+}
+
+function createShortcutsForSameNameFiles(baseFile) {
+  // var baseFile = DriveApp.getFileById(fileId);
+  var baseFileName = baseFile.getName();
+  
+  var files = DriveApp.getFilesByName(baseFileName);
+  var baseFileMD=getFileMD5Hash(baseFile.getId());
+  while (files.hasNext()) {
+    var file = files.next();
+    if(file.getMimeType() != MimeType.SHORTCUT){
+    // Avoid creating a shortcut for the base file itself
+      if (file.getId() !== baseFile.getId()) {
+        fileMD=getFileMD5Hash(file.getId());
+        if(fileMD==baseFileMD){
+          var folder = getFileParentFolders(file.getId());
+          if(checkParentFoldersIsNot(file.getId(),'Comarcom Technical and Marketing Material')==false && file.getOwner().getEmail()==Session.getActiveUser()){
+            var shortcut = DriveApp.createShortcut(baseFile.getId());
+            shortcut.moveTo(folder);
+            file.setTrashed(true);
+            Logger.log("Delete+Shortcut created at:"+folder+" ###FILE:"+baseFile.getName());
+          } else{
+            Logger.log("File in Marketing Material");
+          }
+        }
+      } else{
+        Logger.log("No Duplicates found");
+      }
+    } else{
+      Logger.log("File is shortcut: "+ file.getName()+file.getMimeType()+" - "+file.getId());
+    }
+  }
+}
+
+
+function addFileToList(folder){
+var files = folder.getFiles();
+  while(files.hasNext()){
+    var file = files.next();
+    // Logger.log(file.getName());
+    logFileMD5Hash(file.getId());
+  createShortcutsForSameNameFiles(file);
+  //  let files2 = Drive.Files.list();
+  //   for (item of files2.items) {
+  //     // Logger.log(item['md5Checksum']);
+  //     // Logger.log(item['originalFilename']);
+  //     fileList.push([item['originalFilename'],item['md5Checksum']])
+  // }
+    
+  } 
+}
+
+function listFolders() {
+  var parentFolder = DriveApp.getRootFolder();
+  addFileToList(parentFolder);
+  getSubFolders(parentFolder);
+
+
+  Logger.log("FINISHED");
+}
+
+function removeShortcutsToTrashedFiles() {
+  var files = DriveApp.getFiles();
+  while (files.hasNext()) {
+    var file = files.next();
+    if (file.isTrashed()) {
+      var shortcuts = DriveApp.getFileById(file.getId()).getShortcuts();
+      Logger.log(shortcuts);
+      for (var i = 0; i < shortcuts.length; i++) {
+        shortcuts[i].setTrashed(true);
+        
+      }
+    }
+  }
+}
+
+function readSheetandRestore(){
+  var spreadsheet=SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Done");
+  var driveSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Drive");
+  var existingFileIds = sheet.getRange("A:A").getValues().flat();
+  var driveFileIds=driveSheet.getRange("A:A").getValues().flat();
+  for (var i = 0; i < existingFileIds.length; i++) {
+    // for (var i = 0; i < 1; i++) {
+
+  // var files = DriveApp.getFiles();
+ // Iterate through the files in Google Drive
+  // while (files.hasNext()) {
+    var file = DriveApp.getFileById(driveFileIds[i])
+    var fileId = driveFileIds[i];
+    var files = DriveApp.getFilesByName(file.getName());
+    
+    while (files.hasNext()){
+      var tfile=files.next();
+      Logger.log(tfile);
+      if(tfile.getTargetId()==null){
+        // Check if the file ID already exists in the spreadsheet
+        if (tfile.isTrashed()==true) {
+          // If it doesn't exist, add it to the spreadsheet and process the file
+          tfile.setTrashed(false);
+
+          // Add your file processing code here
+
+          // Log the file ID to keep track of progress
+          Logger.log("Restored File name: " + tfile.getName() + "  FileID:"+fileId);
+        } else{
+          Logger.log("File not in Trash: "+tfile.getName());
+        }
+      } else{
+        Logger.log("shortcut found,Trashing : "+tfile.getName());
+        tfile.setTrashed(true);
+      }
+    }
+  }
+}
+
+
+function trashAndShortcut(fTrashId,fLinkId){
+  fTrash=DriveApp.getFileById(fTrashId);
+  fLink=DriveApp.getFileById(fLinkId);
+    if(fTrash.isTrashed()==false && fLink.isTrashed()==false){
+    if(checkParentFoldersIsNot(fTrashId,'Comarcom Technical and Marketing Material')==false && fTrash.getOwner().getEmail()==Session.getActiveUser()){
+      try{
+      var folder = getFileParentFolders(fTrashId);
+      var shortcut = DriveApp.createShortcut(fLinkId);
+      shortcut.moveTo(folder);
+        fTrash.setTrashed(true);
+        Logger.log("Delete+Shortcut created at:"+folder+" ###FILE:"+fTrash.getName());
+      }
+      catch(e){
+        Logger.log("EXCEPTION CAUGHT: fTrash"+fTrashId+"   fLink:"+fLinkId);
+      }
+      } else{
+        Logger.log("File in Marketing Material orNot Owner" + fTrash.getName());
+    }
+  } else{
+    Logger.log("file is in Trash: "+fTrash.getName());
+  }
+}
+
+function readSheetandGo(){
+  var lastI=0;
+  var spreadsheet=SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Done");
+  var driveSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Drive");
+  var existingFileIds = sheet.getRange("A:A").getValues().flat();
+  var driveFileIds=driveSheet.getRange("A:A").getValues().flat();
+  var driveFileSize=driveSheet.getRange("B:B").getValues().flat();
+  var driveFileName=driveSheet.getRange("C:C").getValues().flat();
+  for (var i = 4800; i < driveFileIds.length; i++) {
+    if(driveFileIds[i]!=driveFileIds[lastI] && driveFileSize[i]==driveFileSize[lastI] && driveFileName[i]==driveFileName[lastI]){
+      trashAndShortcut(driveFileIds[i],driveFileIds[lastI]);
+    } else{
+      lastI=i;
+    }
+    var size=200
+    if(i % size==0){
+      var data=driveFileIds.slice(0,i);
+      data=data.map(function(number) {
+        return [number];
+        });
+      Logger.log(i);
+      Logger.log(data);
+      sheet.getRange(1,1,i,1).setValues(data);
+    }
+  }  
+}
+
+function listFilesBySize() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Drive");
+  // var folder = DriveApp.getRootFolder(); // Change to the desired folder if needed
+  var files = DriveApp.getFiles();
+  var fileData = [];
+
+  // Load existing file IDs from the spreadsheet
+  var existingFileIds = loadExistingFileIds(sheet);
+
+  while (files.hasNext()) {
+    var file = files.next();
+    var fileId = file.getId();
+
+    if (!existingFileIds.includes(fileId)) {
+      var fileSize = file.getSize();
+      var fileName= file.getName();
+      fileData.push([ fileId, fileSize,fileName ]);
+    }
+  }
+
+  // Sort files by size in descending order
+  fileData.sort(function (a, b) {
+    return b[1] - a[1];
+  });
+  Logger.log(fileData);
+sheet.getRange(1,1,fileData.length,3).setValues(fileData);
+  // Write file IDs to the spreadsheet
+  // for (var i = 0; i < fileData.length; i++) {
+  //   sheet.appendRow([fileData[i].id]);
+  // }
+}
+
+function loadExistingFileIds(sheet) {
+  var data = sheet.getDataRange().getValues();
+  var fileIds = [];
+
+  for (var i = 0; i < data.length; i++) {
+    fileIds.push(data[i][0]);
+  }
+  return fileIds;
+}
+
+function trashShortcuts() {
+  var trashedFiles = DriveApp.searchFiles("mimeType = 'application/vnd.google-apps.shortcut'")
+
+  // Restore trashed files
+  while (trashedFiles.hasNext()) {
+    var file = trashedFiles.next();
+    // Logger.log(file.getName());
+    if(file.isTrashed()==false){
+      try{
+      file.setTrashed(true);
+      }
+      catch(e){
+        Logger.log('cannot delete file: '+file.getName());
+      }
+    }
+    Logger.log("trashed: "+file.getName())
+  }
+}
